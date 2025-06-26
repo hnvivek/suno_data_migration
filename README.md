@@ -12,26 +12,29 @@ Takes your old CSV files and converts them to a clean, standardized format. Hand
 
 ## Quick start
 
-1. **Set up your environment** (recommended)
+1. **Create virtual environment** (recommended)
    ```bash
    python3 -m venv venv
+   ```
+
+2. **Activate virtual environment**
+   ```bash
    source venv/bin/activate  # On Windows: venv\Scripts\activate
    ```
 
-2. **Install dependencies**
+3. **Install dependencies**
    ```bash
    pip install -r requirements.txt
    ```
 
-3. **Add your data**
-   Put these files in the `data/` folder:
-   - `patients_data.csv`
-   - `appointments_data.csv` 
-   - `invoices_data.csv`
-
 4. **Run the migration**
    ```bash
    python3 main.py
+   ```
+
+5. **Run test cases** (optional)
+   ```bash
+   python3 test_models.py
    ```
 
 That's it! The tool will process everything and show you a summary. For the sample dataset (1,000 patients, 1,600 appointments, 1,400 invoices), processing typically takes about `0.3 seconds`.
