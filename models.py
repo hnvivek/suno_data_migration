@@ -78,7 +78,17 @@ class PatientModel(BaseModel):
     def email_lower(cls, v):
         if is_null_or_empty(v):
             raise ValueError("Email is required")
-        return str(v).strip().lower()
+        
+        email = str(v).strip().lower()
+        
+        # Basic email format validation
+        import re
+        email_pattern = r'^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$'
+        
+        if not re.match(email_pattern, email):
+            raise ValueError(f"Invalid email format: '{v}'. Must be a valid email address.")
+            
+        return email
 
     @validator('phone_e164', pre=True)
     def to_e164(cls, v):
@@ -86,14 +96,16 @@ class PatientModel(BaseModel):
             return None  # "Blank ➜ NULL" 
         try:
             parsed = phonenumbers.parse(str(v), "US")
-            if phonenumbers.is_possible_number(parsed):
-                return phonenumbers.format_number(parsed, phonenumbers.PhoneNumberFormat.E164)
+            if phonenumbers.is_valid_number(parsed):
+                e164 = phonenumbers.format_number(parsed, phonenumbers.PhoneNumberFormat.E164)
+                # Strictly enforce +1XXXXXXXXXX format (exactly 12 characters: +1 + 10 digits)
+                if len(e164) == 12 and e164.startswith('+1') and e164[2:].isdigit():
+                    return e164
         except NumberParseException:
             pass
         
-        # Invalid phone numbers become NULL (graceful handling)
-        logger.warning(f"Invalid phone number format: {v}, setting to NULL")
-        return None
+        # Invalid phone numbers should FAIL the record
+        raise ValueError(f"Invalid phone number format: '{v}'. Must convert to valid E.164 format (+1XXXXXXXXXX) or be blank.")
 
 
 class EncounterModel(BaseModel):
@@ -135,7 +147,11 @@ class EncounterModel(BaseModel):
             raise ValueError("Status is required")
         # Map: SCHEDULED→scheduled, CANCELLED→cancelled, COMPLETED→completed
         mapping = {'SCHEDULED': 'scheduled', 'CANCELLED': 'cancelled', 'COMPLETED': 'completed'}
-        return mapping.get(str(v).strip().upper(), str(v).strip().lower())
+        status_upper = str(v).strip().upper()
+        if status_upper in mapping:
+            return mapping[status_upper]
+        else:
+            raise ValueError(f"Invalid status value: '{v}'. Must be one of: SCHEDULED, CANCELLED, COMPLETED")
 
 
 class InvoiceModel(BaseModel):
@@ -200,6 +216,10 @@ class InvoiceModel(BaseModel):
             raise ValueError("Status is required")
         # Map: OPEN→open, PAID→paid
         mapping = {'OPEN': 'open', 'PAID': 'paid'}
-        return mapping.get(str(v).strip().upper(), str(v).strip().lower()) 
+        status_upper = str(v).strip().upper()
+        if status_upper in mapping:
+            return mapping[status_upper]
+        else:
+            raise ValueError(f"Invalid status value: '{v}'. Must be one of: OPEN, PAID") 
 
  
