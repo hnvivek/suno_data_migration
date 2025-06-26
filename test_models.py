@@ -20,7 +20,7 @@ class TestPatientModel(unittest.TestCase):
             'first_name': 'John',
             'last_name': 'Doe',
             'dob': '1990-01-15',
-            'phone': '(555) 123-4567',
+            'phone': '(818) 555-1234',  
             'email': 'JOHN.DOE@EXAMPLE.COM',
             'created_at': '2022-01-01 10:30'
         }
@@ -30,7 +30,7 @@ class TestPatientModel(unittest.TestCase):
         self.assertEqual(patient.legacy_id, 1)
         self.assertEqual(patient.first_name, 'John')
         self.assertEqual(patient.dob, date(1990, 1, 15))
-        self.assertEqual(patient.phone_e164, '+15551234567')  # E.164 format - corrected field name
+        self.assertEqual(patient.phone_e164, '+18185551234')  # E.164 format with valid phone number
         self.assertEqual(patient.email, 'john.doe@example.com')  # lowercase
         
         # Check timezone conversion
@@ -41,15 +41,15 @@ class TestPatientModel(unittest.TestCase):
         self.assertEqual(len(patient.patient_uuid), 32)  # hex format
     
     def test_phone_number_formats(self):
-        """Test various phone number formats"""
-        test_cases = [
-            ('(555) 123-4567', '+15551234567'),
-            ('555-123-4567', '+15551234567'),
-            ('555.123.4567', '+15551234567'),
-            ('5551234567', '+15551234567'),
-            ('invalid', None),
-            ('', None),
-            (None, None)
+        """Test various phone number formats - valid ones should convert, invalid ones should raise ValidationError"""
+        # Test valid phone formats that should convert successfully
+        valid_test_cases = [
+            ('(818) 555-1234', '+18185551234'),
+            ('818-555-1234', '+18185551234'),
+            ('818.555.1234', '+18185551234'),
+            ('8185551234', '+18185551234'),
+            ('', None),  # blank should become None
+            (None, None)  # None should stay None
         ]
         
         base_data = {
@@ -61,12 +61,28 @@ class TestPatientModel(unittest.TestCase):
             'created_at': '2022-01-01 10:30'
         }
         
-        for input_phone, expected in test_cases:
+        # Test valid phone numbers
+        for input_phone, expected in valid_test_cases:
             patient_data = base_data.copy()
             patient_data['phone'] = input_phone
             
             patient = PatientModel(**patient_data)
-            self.assertEqual(patient.phone_e164, expected, f"Failed for input: {input_phone}")  # corrected field name
+            self.assertEqual(patient.phone_e164, expected, f"Failed for input: {input_phone}")
+        
+        # Test invalid phone numbers that should raise ValidationError
+        invalid_phones = [
+            '(555) 123-4567',  # Invalid area code
+            'invalid',         # Invalid format
+            '(011) 123-4567',  # International prefix
+            '(960) 123-4567'   # Unassigned area code
+        ]
+        
+        for invalid_phone in invalid_phones:
+            patient_data = base_data.copy()
+            patient_data['phone'] = invalid_phone
+            
+            with self.assertRaises(ValidationError, msg=f"Should have failed for: {invalid_phone}"):
+                PatientModel(**patient_data)
     
     def test_invalid_date(self):
         """Test invalid date handling - should raise validation error"""
@@ -97,6 +113,50 @@ class TestPatientModel(unittest.TestCase):
         
         patient = PatientModel(**patient_data)
         self.assertIsNone(patient.phone_e164)  # corrected field name
+    
+    def test_email_validation(self):
+        """Test email validation - valid emails should pass, invalid ones should raise ValidationError"""
+        base_data = {
+            'legacy_id': 1,
+            'first_name': 'John',
+            'last_name': 'Doe',
+            'dob': '1990-01-15',
+            'phone': '(818) 555-1234',
+            'created_at': '2022-01-01 10:30'
+        }
+        
+        # Test valid emails
+        valid_emails = [
+            'john@example.com',
+            'JOHN.DOE@EXAMPLE.COM',  # should be converted to lowercase
+            'user.name+tag@domain.co.uk',
+            'test123@test-domain.org'
+        ]
+        
+        for email in valid_emails:
+            patient_data = base_data.copy()
+            patient_data['email'] = email
+            
+            patient = PatientModel(**patient_data)
+            self.assertEqual(patient.email, email.lower(), f"Failed for email: {email}")
+        
+        # Test invalid emails that should raise ValidationError
+        invalid_emails = [
+            'userexample.com',      # missing @
+            'user@@example.com',    # double @
+            'user@',                # missing domain
+            '@example.com',         # missing username
+            '',                     # empty string
+            'user@domain',          # missing TLD
+            'user name@example.com' # space in username
+        ]
+        
+        for invalid_email in invalid_emails:
+            patient_data = base_data.copy()
+            patient_data['email'] = invalid_email
+            
+            with self.assertRaises(ValidationError, msg=f"Should have failed for: {invalid_email}"):
+                PatientModel(**patient_data)
 
 
 class TestEncounterModel(unittest.TestCase):
@@ -127,13 +187,15 @@ class TestEncounterModel(unittest.TestCase):
         self.assertEqual(len(appointment.encounter_uuid), 32)  # hex format
     
     def test_status_mapping(self):
-        """Test status value mapping per requirements"""
-        test_cases = [
+        """Test status value mapping per requirements - only valid statuses accepted"""
+        # Test valid statuses that should be accepted and converted to lowercase
+        valid_test_cases = [
             ('SCHEDULED', 'scheduled'),
             ('CANCELLED', 'cancelled'),
             ('COMPLETED', 'completed'),
             ('scheduled', 'scheduled'),  # already lowercase
-            ('unknown_status', 'unknown_status')  # fallback to lowercase
+            ('cancelled', 'cancelled'),  # already lowercase
+            ('completed', 'completed')   # already lowercase
         ]
         
         base_data = {
@@ -145,12 +207,23 @@ class TestEncounterModel(unittest.TestCase):
             'location': 'Main Clinic'
         }
         
-        for input_status, expected in test_cases:
+        # Test valid statuses
+        for input_status, expected in valid_test_cases:
             appointment_data = base_data.copy()
             appointment_data['status'] = input_status
             
             appointment = EncounterModel(**appointment_data)
             self.assertEqual(appointment.status, expected, f"Failed for status: {input_status}")
+        
+        # Test invalid statuses that should raise ValidationError
+        invalid_statuses = ['unknown_status', 'INVALID', 'pending', 'COMPLE']
+        
+        for invalid_status in invalid_statuses:
+            appointment_data = base_data.copy()
+            appointment_data['status'] = invalid_status
+            
+            with self.assertRaises(ValidationError, msg=f"Should have failed for: {invalid_status}"):
+                EncounterModel(**appointment_data)
 
 
 class TestInvoiceModel(unittest.TestCase):
